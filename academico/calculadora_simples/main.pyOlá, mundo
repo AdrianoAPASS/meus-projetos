@@ -1,4 +1,127 @@
-def somar(a, b):
-    return a + b
+import tkinter as tk
+import math
+import ast
+import operator
 
-print("Resultado:", somar(2, 3))
+# dicionário de operadores permitidos para nós BinOp
+OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg,
+    # você pode adicionar mais, como ast.Mod → operator.mod, etc
+}
+
+# dicionário de funções permitidas
+FUNCS = {
+    'sin': math.sin,
+    'cos': math.cos,
+    'tan': math.tan,
+    'sqrt': math.sqrt,
+    'log': math.log10,
+    'ln': math.log,
+    # etc.
+}
+
+class SafeEval:
+
+    def eval_expr(self, expr: str):
+        """
+        Avalia a expressão de forma segura: apenas números, operações permitidas, funções permitidas.
+        """
+        # parse para AST
+        node = ast.parse(expr, mode='eval')
+        return self._eval(node.body)
+
+    def _eval(self, node):
+        # números (constantes)
+        if isinstance(node, ast.Constant):
+            return node.value
+        # negativo unário
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            return - self._eval(node.operand)
+        # binárias
+        elif isinstance(node, ast.BinOp):
+            if type(node.op) in OPERATORS:
+                left = self._eval(node.left)
+                right = self._eval(node.right)
+                return OPERATORS[type(node.op)](left, right)
+        # chamadas de função
+        elif isinstance(node, ast.Call):
+            # somente chamada simples de nome (função permitida)
+            if isinstance(node.func, ast.Name):
+                func_name = node.func.id
+                if func_name in FUNCS:
+                    # avaliar argumentos
+                    args = [self._eval(arg) for arg in node.args]
+                    return FUNCS[func_name](*args)
+        # parênteses / agrupamentos são tratados via AST naturalmente
+        raise ValueError(f"Expressão inválida ou não permitida: {ast.dump(node)}")
+
+
+class CalculadoraCientifica:
+    def __init__(self, master):
+        self.master = master
+        master.title("Calculadora Científica")
+
+        self.display = tk.Entry(master, width=25, font=("Arial", 18), bd=5, justify='right')
+        self.display.grid(row=0, column=0, columnspan=5, padx=5, pady=5)
+
+        digits = [
+            ('7',1,0), ('8',1,1), ('9',1,2),
+            ('4',2,0), ('5',2,1), ('6',2,2),
+            ('1',3,0), ('2',3,1), ('3',3,2),
+            ('0',4,0), ('.',4,1)
+        ]
+        for (text, r, c) in digits:
+            btn = tk.Button(master, text=text, width=5, height=2,
+                            command=lambda t=text: self.press(t))
+            btn.grid(row=r, column=c, padx=2, pady=2)
+
+        ops = [
+            ('+',1,3), ('-',2,3), ('*',3,3), ('/',4,3),
+            ('^',4,2)
+        ]
+        for (text, r, c) in ops:
+            btn = tk.Button(master, text=text, width=5, height=2,
+                            command=lambda t=text: self.press(t))
+            btn.grid(row=r, column=c, padx=2, pady=2)
+
+        special = [
+            ('sin',1,4), ('cos',2,4), ('tan',3,4),
+            ('log',4,4), ('ln',5,0), ('sqrt',5,1),
+            ('(',5,2), (')',5,3), ('=',5,4),
+            ('C',6,0)
+        ]
+        for (text, r, c) in special:
+            btn = tk.Button(master, text=text, width=5, height=2,
+                            command=lambda t=text: self.press(t))
+            btn.grid(row=r, column=c, padx=2, pady=2)
+
+        self.safe = SafeEval()
+
+    def press(self, key):
+        if key == 'C':
+            self.display.delete(0, tk.END)
+        elif key == '=':
+            expr = self.display.get()
+            # converter ^ para ** para AST reconhecer como potência
+            expr = expr.replace('^', '**')
+            try:
+                result = self.safe.eval_expr(expr)
+                self.display.delete(0, tk.END)
+                self.display.insert(tk.END, str(result))
+            except Exception as e:
+                self.display.delete(0, tk.END)
+                self.display.insert(tk.END, "Erro")
+                print("Erro ao avaliar:", e)
+        else:
+            self.display.insert(tk.END, key)
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    calc = CalculadoraCientifica(root)
+    root.mainloop()
